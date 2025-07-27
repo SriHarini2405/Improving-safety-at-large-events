@@ -1,0 +1,80 @@
+import cv2
+import uuid
+import time
+import csv
+import os
+from datetime import datetime
+from google.cloud import vision
+
+# Initialize Vision client
+client = vision.ImageAnnotatorClient()
+
+# Start camera
+cap = cv2.VideoCapture(0)
+
+if not cap.isOpened():
+    print("❌ Cannot access camera.")
+    exit()
+
+print("✅ Camera is live... press 'q' to quit")
+
+# Prepare CSV for logging
+csv_file = "crowd_log.csv"
+if not os.path.exists(csv_file):
+    with open(csv_file, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["timestamp", "person_count"])
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        print("❌ Failed to grab frame.")
+        break
+
+    # Encode and send to Vision API
+    success, encoded_image = cv2.imencode('.jpg', frame)
+    if not success:
+        continue
+
+    image = vision.Image(content=encoded_image.tobytes())
+
+    try:
+        response = client.object_localization(image=image)
+        objects = response.localized_object_annotations
+
+        # Count persons
+        person_count = sum(1 for obj in objects if obj.name.lower() == "person")
+
+        # Draw boxes
+        for obj in objects:
+            if obj.name.lower() != "person":
+                continue
+            vertices = obj.bounding_poly.normalized_vertices
+            h, w, _ = frame.shape
+            p1 = (int(vertices[0].x * w), int(vertices[0].y * h))
+            p2 = (int(vertices[2].x * w), int(vertices[2].y * h))
+            cv2.rectangle(frame, p1, p2, (0, 255, 0), 2)
+            cv2.putText(frame, "Person", (p1[0], p1[1] - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+        # Print + log
+        label = f"🧍 Detected {person_count} people — {'CROWD' if person_count >= 4 else 'NOT CROWD'}"
+        print(label)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(csv_file, 'a', newline='') as f:
+            csv.writer(f).writerow([timestamp, person_count])
+
+        # Show frame
+        cv2.putText(frame, label, (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        cv2.imshow("Crowd Detection", frame)
+
+    except Exception as e:
+        print(f"❌ Vision API error: {e}")
+
+    # Quit key
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
