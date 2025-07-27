@@ -1,0 +1,8 @@
+streamlit
+opencv-python
+Pillow
+folium
+streamlit-folium
+numpy
+deepface
+google-generativeai
