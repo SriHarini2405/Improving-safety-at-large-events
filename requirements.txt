@@ -12,4 +12,3 @@ streamlit-folium==0.18.0
 requests==2.31.0
 google-generativeai==0.5.4
 tensorflow==2.12.0
-
